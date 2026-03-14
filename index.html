@@ -415,6 +415,28 @@ tr:hover td{background:var(--cream)}
 .img-upload-area strong{font-size:14px;font-weight:600;color:var(--green)}
 .img-preview{width:100%;height:120px;object-fit:cover;border-radius:var(--radius-sm);margin-top:10px}
 
+.modal-drag-handle{display:none;width:40px;height:4px;background:var(--border);border-radius:4px;margin:10px auto 0;flex-shrink:0}
+@media(max-width:600px){.modal-drag-handle{display:block}}
+  .overlay{padding:0;align-items:flex-end}
+  .modal{
+    max-width:100%;
+    width:100%;
+    border-radius:var(--radius) var(--radius) 0 0;
+    max-height:92vh;
+    animation:slideUpMob .3s cubic-bezier(.34,1.1,.64,1);
+  }
+  @keyframes slideUpMob{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  .modal-head{padding:16px 18px}
+  .modal-body{padding:18px 16px}
+  .modal-foot{padding:12px 16px;gap:8px}
+  .modal-foot .btn{flex:1;justify-content:center}
+  /* Force all form grids inside modal to single column */
+  .modal .form-grid{grid-template-columns:1fr !important}
+  .modal .field input,
+  .modal .field select,
+  .modal .field textarea{font-size:16px} /* prevents iOS zoom on focus */
+}
+
 /* ── TOAST ── */
 .toast-stack{position:fixed;bottom:22px;right:22px;z-index:3000;display:flex;flex-direction:column;gap:8px;max-width:340px}
 .toast{background:var(--dark);color:#fff;padding:13px 16px;border-radius:var(--radius-sm);box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:10px;font-size:14px;animation:slideInR .3s ease;border-left:4px solid var(--green)}
@@ -480,6 +502,10 @@ footer ul li:hover{color:#fff}
   .admin-layout{grid-template-columns:1fr}
   .footer-grid{grid-template-columns:1fr 1fr}
   .form-grid{grid-template-columns:1fr}
+
+  /* Admin sidebar becomes horizontal scrollable tabs on tablet */
+  .admin-sidebar{display:flex;flex-direction:row;overflow-x:auto;gap:4px;padding:8px;white-space:nowrap}
+  .adm-nav{flex-shrink:0;padding:9px 14px;border-radius:50px;font-size:13px}
 }
 
 @media(max-width:600px){
@@ -487,8 +513,6 @@ footer ul li:hover{color:#fff}
   .nav-inner{padding:0 12px;gap:8px;height:60px}
   .nav-search{display:none}
   .logo{font-size:20px}
-
-  /* Account button — shrink so it doesn't overflow */
   .nav-actions{gap:4px;flex-shrink:0}
   #navUserBtn{font-size:11px;padding:6px 8px;max-width:130px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
   #navAuthBtn{font-size:12px;padding:7px 12px}
@@ -502,7 +526,7 @@ footer ul li:hover{color:#fff}
   .prod-price{font-size:16px}
   .prod-footer{flex-direction:column;align-items:flex-start;gap:6px}
   .prod-footer .btn{width:100%;justify-content:center;padding:8px 10px;font-size:12px}
-  .prod-desc{display:none} /* hide on very small screens to save space */
+  .prod-desc{display:none}
 
   /* ── Categories ── */
   .categories-grid{grid-template-columns:repeat(3,1fr)}
@@ -538,6 +562,49 @@ footer ul li:hover{color:#fff}
   /* ── Mobile nav height fix ── */
   .page{padding-top:60px}
   .mobile-nav{top:60px}
+
+  /* ── ADMIN MOBILE ── */
+  .admin-wrap{padding:16px 12px}
+  .admin-wrap>div:first-child{flex-direction:column;align-items:flex-start;gap:10px}
+  .admin-stats{grid-template-columns:repeat(2,1fr);gap:10px}
+  .sc-value{font-size:22px}
+  .sc-label{font-size:11px}
+
+  /* Admin sidebar — horizontal scrollable pill tabs */
+  .admin-sidebar{display:flex;flex-direction:row;overflow-x:auto;gap:6px;padding:10px 0;white-space:nowrap;background:transparent;border:none;box-shadow:none;-webkit-overflow-scrolling:touch}
+  .admin-sidebar::-webkit-scrollbar{display:none}
+  .adm-nav{flex-shrink:0;padding:9px 16px;border-radius:50px;font-size:13px;border:1.5px solid var(--border);background:#fff}
+  .adm-nav.active{background:var(--green);color:#fff;border-color:var(--green)}
+
+  /* Admin panel — full width, reduced padding */
+  .admin-panel{padding:16px 12px;overflow:hidden}
+  .admin-panel h2{font-size:16px;margin-bottom:14px}
+
+  /* Admin toolbar — stack on mobile */
+  .admin-toolbar{flex-direction:column;gap:8px}
+  .admin-toolbar input,.admin-toolbar select{width:100%;min-width:unset}
+  .admin-toolbar .btn{width:100%}
+
+  /* Tables — horizontal scroll on mobile */
+  .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -12px;padding:0 12px}
+  table{min-width:520px;font-size:12px}
+  th{padding:8px 10px;font-size:10px}
+  td{padding:10px 10px}
+
+  /* Hide less important table columns on mobile */
+  .tbl-rating-col{display:none}
+  th:nth-child(5),td:nth-child(5){display:none}
+
+  /* Table action buttons — smaller on mobile */
+  .tbl-btn{padding:4px 8px;font-size:11px}
+  .tbl-actions{flex-direction:column;gap:4px}
+
+  /* Admin stat cards */
+  .stat-card{padding:14px 12px}
+
+  /* Setup notice */
+  .setup-notice{font-size:12px;padding:12px}
+  .setup-notice strong{font-size:13px}
 }
 </style>
 </head>
@@ -858,6 +925,7 @@ footer ul li:hover{color:#fff}
 <!-- Add / Edit Product Modal -->
 <div class="overlay hidden" id="productModal">
   <div class="modal">
+    <div class="modal-drag-handle"></div>
     <div class="modal-head">
       <h3 id="productModalTitle">Add New Product</h3>
       <button class="modal-close" onclick="closeModal('productModal')">✕</button>
@@ -875,23 +943,23 @@ footer ul li:hover{color:#fff}
           </div>
         </div>
         <div class="form-grid">
-          <div class="field"><label>Price (₦) *</label><input id="mProdPrice" type="number" placeholder="3500"></div>
-          <div class="field"><label>Old Price (₦)</label><input id="mProdOldPrice" type="number" placeholder="Leave blank if no sale"></div>
+          <div class="field"><label>Price (₦) *</label><input id="mProdPrice" type="number" placeholder="3500" inputmode="numeric"></div>
+          <div class="field"><label>Old Price (₦)</label><input id="mProdOldPrice" type="number" placeholder="Leave blank if no sale" inputmode="numeric"></div>
         </div>
         <div class="form-grid">
-          <div class="field"><label>Stock (units)</label><input id="mProdStock" type="number" placeholder="50"></div>
+          <div class="field"><label>Stock (units)</label><input id="mProdStock" type="number" placeholder="50" inputmode="numeric"></div>
           <div class="field"><label>Emoji Icon</label><input id="mProdEmoji" placeholder="🌾 (fallback if no image)"></div>
         </div>
         <div class="field"><label>Description</label><textarea id="mProdDesc" placeholder="Describe the product…"></textarea></div>
         <div class="field">
           <label>Product Image URL</label>
-          <input id="mProdImgUrl" placeholder="https://… (paste image URL)" oninput="previewImgUrl(this.value)">
+          <input id="mProdImgUrl" placeholder="https://… (paste image URL)" oninput="previewImgUrl(this.value)" inputmode="url">
           <div style="font-size:12px;color:var(--mid);margin-top:4px">Or upload a photo below:</div>
         </div>
         <div class="img-upload-area" id="imgUploadArea" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleImgDrop(event)">
           <input type="file" accept="image/*" onchange="handleImgUpload(this)">
           <div class="up-icon">📷</div>
-          <p><strong>Click to upload</strong> or drag & drop</p>
+          <p><strong>Tap to upload</strong> or drag & drop</p>
           <p style="font-size:12px;margin-top:2px">PNG, JPG, WEBP supported</p>
         </div>
         <div id="imgPreviewWrap" class="hidden">
@@ -914,6 +982,7 @@ footer ul li:hover{color:#fff}
 <!-- Delete Confirm Modal -->
 <div class="overlay hidden" id="deleteModal">
   <div class="modal" style="max-width:400px">
+    <div class="modal-drag-handle"></div>
     <div class="modal-head"><h3>Delete Product</h3><button class="modal-close" onclick="closeModal('deleteModal')">✕</button></div>
     <div class="modal-body">
       <p style="color:var(--mid);font-size:15px;line-height:1.6">Are you sure you want to delete <strong id="deleteProductName"></strong>? This action cannot be undone.</p>
