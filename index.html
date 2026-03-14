@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Moddot — Fresh Nigerian Foodstuffs, Delivered</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+<!-- Supabase JS SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- Paystack Inline JS SDK -->
 <script src="https://js.paystack.co/v1/inline.js"></script>
 <style>
@@ -176,7 +178,7 @@ nav.scrolled{box-shadow:var(--shadow-md)}
 .prod-body{padding:14px 16px}
 .prod-cat{font-size:11px;color:var(--light);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
 .prod-name{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;margin-bottom:4px;line-height:1.3}
-.prod-desc {font-size: 12px;color: var(--mid);margin-bottom: 10px;overflow: hidden;line-height: 1.5;display: -webkit-box;-webkit-line-clamp: 2;-webkit-box-orient: vertical; /* stylelint-disable-line */ line-clamp: 2;}
+.prod-desc{font-size:12px;color:var(--mid);margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.5;line-clamp:2}
 .prod-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .prod-price{font-family:'Syne',sans-serif;font-size:19px;font-weight:800;color:var(--green)}
 .prod-price del{font-size:12px;font-weight:400;color:var(--light);font-family:'DM Sans',sans-serif;margin-left:4px}
@@ -952,39 +954,169 @@ const CATEGORIES = [
 ];
 
 // ══════════════════════════════════════════════════════
-//  ADMIN ACCOUNTS  ← authorised admins only
-//  To add/remove admins, edit this list.
+//  SUPABASE CONFIG
+//  1. Go to https://supabase.com → New Project
+//  2. Settings → API → copy Project URL and anon public key
+//  3. Paste them below
 // ══════════════════════════════════════════════════════
-const ADMIN_ACCOUNTS = [
-  { email: 'admin@moddot.ng',    password: 'Moddot@Admin2025', name: 'Moddot Admin' },
-  { email: 'ceo@moddot.ng',      password: 'CEO@Secure9900',   name: 'CEO – Moddot'  },
-  { email: 'manager@moddot.ng',  password: 'Manager#2025',     name: 'Store Manager' },
-];
-let currentAdmin = null;   // set after admin login
+const SUPABASE_URL  = 'https://cgyzyibhkzekjgybtsgw.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNneXp5aWJoa3pla2pneWJ0c2d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0ODAxMzIsImV4cCI6MjA4OTA1NjEzMn0.pzVqJ-oXhZIkgEePlYJwnjY5cmcQY8xsMRfN8uDxk3Y';
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
 // ══════════════════════════════════════════════════════
-//  PAYSTACK CONFIG  ← replace with your live public key
+//  PAYSTACK CONFIG
 // ══════════════════════════════════════════════════════
-const PAYSTACK_PUBLIC_KEY = 'pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // <-- paste your Paystack public key here
-const ADMIN_EMAIL_LIST    = ADMIN_ACCOUNTS.map(a => a.email); // emails that receive order notifications
+const PAYSTACK_PUBLIC_KEY = 'pk_test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'; // ← paste Paystack public key
+
+// ══════════════════════════════════════════════════════
+//  EMAILJS CONFIG  (admin order alerts)
+// ══════════════════════════════════════════════════════
+const EMAILJS_SERVICE_ID  = 'service_xzmsbk6';
+const EMAILJS_TEMPLATE_ID = 'template_4gv54ql';   // order notification to admins
+const EMAILJS_TEMPLATE_ID2 = 'template_3wwhzzi';  // secondary template (e.g. customer confirmation)
+const EMAILJS_PUBLIC_KEY  = 'G7lcdYVhVOWrH7adK';
 
 // ══ STATE ══
 let cart = [];
 let wishlist = [];
-let orders = [
-  {id:'MOD-2025-0001',date:'Jan 15, 2025',items:'Ofada Rice, Palm Oil, Egusi',total:15200,status:'Delivered',img:PRODUCT_IMAGES[1]},
-  {id:'MOD-2025-0002',date:'Feb 3, 2025',items:'Garri, Crayfish, Pepper Mix',total:7800,status:'In Transit',img:PRODUCT_IMAGES[4]},
-  {id:'MOD-2025-0003',date:'Feb 28, 2025',items:'Yam, Ugu Leaves, Stockfish',total:6400,status:'Processing',img:PRODUCT_IMAGES[9]},
-];
-let users = [{name:'Adaeze Okafor',email:'adaeze@email.com',password:'password123'}]; // demo user
-let currentUser = null;
+let orders = [];          // loaded from Supabase
+let currentUser = null;   // Supabase auth user + profile
+let currentAdmin = null;  // set after admin role verified
 let filterCat = 'all';
 let sortMode = 'default';
 let currentProduct = null;
 let detailQty = 1;
 let checkoutStep = 1;
 let deleteTargetId = null;
-let currentImgData = null; // for new/edited product images
+let currentImgData = null;
+
+// ══════════════════════════════════════════════════════
+//  SUPABASE HELPERS
+// ══════════════════════════════════════════════════════
+
+// ── Check if Supabase is configured ──
+function sbReady(){
+  return !SUPABASE_URL.includes('your-project-id') && !SUPABASE_ANON.includes('your-anon');
+}
+
+// ── Load current session on page load ──
+async function initSupabase(){
+  if(!sbReady()) return;
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session){
+    await loadUserProfile(session.user);
+  }
+  // Listen for auth state changes (login, logout, token refresh)
+  sb.auth.onAuthStateChange(async (_event, session) => {
+    if(session){
+      await loadUserProfile(session.user);
+    } else {
+      currentUser = null;
+      currentAdmin = null;
+      updateNavAuth();
+      document.getElementById('adminNavBtn').classList.add('hidden');
+      document.getElementById('adminMobBtn').classList.add('hidden');
+    }
+  });
+}
+
+// ── Load profile + admin role from Supabase ──
+async function loadUserProfile(authUser){
+  // Fetch profile row from profiles table
+  const { data: profile } = await sb
+    .from('profiles')
+    .select('*')
+    .eq('id', authUser.id)
+    .single();
+
+  currentUser = {
+    id:    authUser.id,
+    email: authUser.email,
+    name:  profile?.full_name || authUser.email.split('@')[0],
+    role:  profile?.role || 'customer',   // 'customer' | 'admin'
+  };
+
+  // If admin role, unlock admin panel
+  if(currentUser.role === 'admin'){
+    currentAdmin = { name: currentUser.name, email: currentUser.email };
+    document.getElementById('adminNavBtn').classList.remove('hidden');
+    document.getElementById('adminMobBtn').classList.remove('hidden');
+  }
+
+  updateNavAuth();
+  await loadOrders();
+}
+
+// ── Load orders for current user ──
+async function loadOrders(){
+  if(!currentUser || !sbReady()) return;
+  const query = currentUser.role === 'admin'
+    ? sb.from('orders').select('*').order('created_at', { ascending: false })
+    : sb.from('orders').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+  const { data, error } = await query;
+  if(!error && data) orders = data;
+}
+
+// ── Save order to Supabase ──
+async function saveOrderToSupabase(order){
+  if(!sbReady()) return;
+  const { error } = await sb.from('orders').insert([{
+    id:           order.id,
+    user_id:      currentUser.id,
+    customer_name: currentUser.name,
+    customer_email: currentUser.email,
+    items:        order.items,
+    items_detail: order.itemsDetail,
+    total:        order.total,
+    status:       'Processing',
+    pay_method:   order.payMethod,
+    pay_ref:      order.payRef,
+  }]);
+  if(error) console.error('[MODDOT] Order save failed:', error.message);
+}
+
+// ── Update order status (admin only) ──
+async function updateOrderStatusDB(orderId, status){
+  if(!sbReady()) return;
+  const { error } = await sb.from('orders').update({ status }).eq('id', orderId);
+  if(error){ showToast('Failed to update order status','error'); return; }
+  const o = orders.find(x=>x.id===orderId);
+  if(o) o.status = status;
+  showToast(`Order ${orderId} updated to "${status}"!`,'success');
+}
+
+// ── Save/update product (admin only) ──
+async function saveProductToDB(product, isEdit){
+  if(!sbReady()) return true; // fall through to local-only mode
+  if(isEdit){
+    const { error } = await sb.from('products').update({
+      name: product.name, category: product.category,
+      price: product.price, old_price: product.oldPrice,
+      stock: product.stock, emoji: product.emoji,
+      description: product.desc, image: product.image,
+      bestseller: product.bestseller,
+    }).eq('id', product.id);
+    if(error){ showToast('DB save failed: '+error.message,'error'); return false; }
+  } else {
+    const { error } = await sb.from('products').insert([{
+      name: product.name, category: product.category,
+      price: product.price, old_price: product.oldPrice,
+      stock: product.stock, emoji: product.emoji,
+      description: product.desc, image: product.image,
+      bestseller: product.bestseller, rating: 4.5, reviews: 0,
+    }]);
+    if(error){ showToast('DB save failed: '+error.message,'error'); return false; }
+  }
+  return true;
+}
+
+// ── Delete product from DB (admin only) ──
+async function deleteProductFromDB(id){
+  if(!sbReady()) return;
+  const { error } = await sb.from('products').delete().eq('id', id);
+  if(error) console.error('[MODDOT] Delete failed:', error.message);
+}
 
 // ══════════════════════════════════════════════════════
 //  NAVIGATION
@@ -1022,31 +1154,46 @@ function gotoAccount(){currentUser?navigate('account'):navigate('auth')}
 function filterGo(cat){filterCat=cat;navigate('products')}
 
 // ══════════════════════════════════════════════════════
-//  ADMIN AUTH
+//  ADMIN AUTH  — role stored securely in Supabase profiles table
 // ══════════════════════════════════════════════════════
-function doAdminLogin(){
-  const email  = (document.getElementById('adminEmail').value||'').trim().toLowerCase();
-  const pass   = document.getElementById('adminPass').value||'';
-  const alertEl= document.getElementById('adminLoginAlert');
+async function doAdminLogin(){
+  const email   = (document.getElementById('adminEmail').value||'').trim();
+  const pass    = document.getElementById('adminPass').value||'';
+  const alertEl = document.getElementById('adminLoginAlert');
   if(!email||!pass){
     alertEl.innerHTML='<div class="alert-msg alert-error">⚠️ Please enter your admin email and password.</div>';return;
   }
-  const admin = ADMIN_ACCOUNTS.find(a=>a.email.toLowerCase()===email && a.password===pass);
-  if(!admin){
-    // log failed attempt (would go to server in production)
-    console.warn('[MODDOT] Failed admin login attempt:', email, new Date().toISOString());
-    alertEl.innerHTML='<div class="alert-msg alert-error">❌ Invalid admin credentials. This attempt has been logged.</div>';return;
+  if(!sbReady()){
+    alertEl.innerHTML='<div class="alert-msg alert-error">⚠️ Supabase not configured yet. See setup guide in the admin dashboard.</div>';return;
   }
-  currentAdmin = admin;
+  alertEl.innerHTML='<div class="alert-msg" style="background:var(--green-pale);color:var(--green)">🔄 Verifying credentials…</div>';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if(error){
+    console.warn('[MODDOT] Admin login failed:', email, new Date().toISOString());
+    alertEl.innerHTML='<div class="alert-msg alert-error">❌ Invalid credentials. This attempt has been logged.</div>';return;
+  }
+  // Check if user has admin role in profiles table
+  const { data: profile } = await sb.from('profiles').select('role,full_name').eq('id',data.user.id).single();
+  if(!profile || profile.role !== 'admin'){
+    await sb.auth.signOut();
+    alertEl.innerHTML='<div class="alert-msg alert-error">🚫 Access denied. Your account does not have admin privileges.</div>';return;
+  }
+  currentAdmin = { name: profile.full_name || email, email };
+  currentUser  = { id: data.user.id, email, name: profile.full_name || email, role: 'admin' };
   document.getElementById('adminNavBtn').classList.remove('hidden');
   document.getElementById('adminMobBtn').classList.remove('hidden');
-  showToast(`Welcome, ${admin.name}! Admin access granted. 🔐`,'success');
+  showToast(`Welcome, ${currentAdmin.name}! Admin access granted. 🔐`,'success');
+  updateNavAuth();
   navigate('admin');
 }
-function adminLogout(){
+
+async function adminLogout(){
+  if(sbReady()) await sb.auth.signOut();
   currentAdmin = null;
+  currentUser  = null;
   document.getElementById('adminNavBtn').classList.add('hidden');
   document.getElementById('adminMobBtn').classList.add('hidden');
+  updateNavAuth();
   showToast('Admin session ended.','info');
   navigate('home');
 }
@@ -1444,24 +1591,35 @@ function placeOrder(){
   handler.openIframe();
 }
 
-function finaliseOrder(total, payMethod, ref){
-  const orderId = 'MOD-2025-' + String(Math.floor(Math.random()*9000)+1000);
-  const p = PRODUCTS.find(x=>x.id===cart[0]?.id);
+async function finaliseOrder(total, payMethod, ref){
+  const orderId   = 'MOD-' + Date.now();
+  const p         = PRODUCTS.find(x=>x.id===cart[0]?.id);
   const itemNames = cart.map(c=>PRODUCTS.find(p=>p.id===c.id).name+' ×'+c.qty).join(', ');
+  const shortItems= cart.map(c=>PRODUCTS.find(p=>p.id===c.id).name).slice(0,2).join(', ')+(cart.length>2?'…':'');
 
-  orders.unshift({
-    id: orderId,
-    date: new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}),
-    items: cart.map(c=>PRODUCTS.find(p=>p.id===c.id).name).slice(0,2).join(', ')+(cart.length>2?'…':''),
+  const order = {
+    id:          orderId,
+    user_id:     currentUser?.id || 'guest',
+    customer_name:  currentUser?.name || 'Guest',
+    customer_email: currentUser?.email || '',
+    items:       shortItems,
+    itemsDetail: itemNames,
     total,
-    status: 'Processing',
-    img: p?.image || null,
-    payRef: ref,
+    status:      'Processing',
     payMethod,
-  });
+    payRef:      ref,
+    img:         p?.image || null,
+    date:        new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}),
+  };
 
-  // ── Send admin email notification via EmailJS ──
-  sendOrderEmailToAdmins({ orderId, customerName: currentUser.name, customerEmail: currentUser.email, items: itemNames, total, payMethod, ref });
+  // Save to Supabase (real database)
+  await saveOrderToSupabase(order);
+
+  // Update local orders list
+  orders.unshift(order);
+
+  // Send admin email notification
+  sendOrderEmailToAdmins({ orderId, customerName: order.customer_name, customerEmail: order.customer_email, items: itemNames, total, payMethod, ref });
 
   cart = [];
   updateCartBadge();
@@ -1480,10 +1638,6 @@ function finaliseOrder(total, payMethod, ref){
 //     {{items}}, {{total}}, {{pay_method}}, {{pay_ref}}, {{admin_email}}
 //  4. Replace SERVICE_ID, TEMPLATE_ID, PUBLIC_KEY below
 // ══════════════════════════════════════════════════════
-const EMAILJS_SERVICE_ID  = 'service_xxxxxxx';  // <-- your EmailJS service ID
-const EMAILJS_TEMPLATE_ID = 'template_xxxxxxx'; // <-- your EmailJS template ID
-const EMAILJS_PUBLIC_KEY  = 'xxxxxxxxxxxxxx';   // <-- your EmailJS public key
-
 function sendOrderEmailToAdmins({ orderId, customerName, customerEmail, items, total, payMethod, ref }){
   // Load EmailJS SDK lazily
   if(typeof emailjs === 'undefined'){
@@ -1544,7 +1698,7 @@ function renderAuth(mode){
         </div>
         <div class="auth-footer">Don't have an account? <a onclick="switchAuth('register')">Create one free</a></div>
         <div style="background:var(--amber-pale);border:1px solid #f5dba0;border-radius:8px;padding:10px 12px;font-size:12px;color:var(--amber);margin-top:4px">
-          <strong>Demo login:</strong> adaeze@email.com / password123
+          <strong>Note:</strong> Sign in with your registered email & password. New here? Create an account above.
         </div>
       </div>`;
   } else {
@@ -1578,37 +1732,65 @@ function renderAuth(mode){
 }
 function switchAuth(mode){renderAuth(mode)}
 
-function doLogin(){
-  const email=document.getElementById('loginEmail').value.trim();
-  const pwd=document.getElementById('loginPwd').value;
-  const alertEl=document.getElementById('loginAlert');
-  // validation
+async function doLogin(){
+  const email   = document.getElementById('loginEmail').value.trim();
+  const pwd     = document.getElementById('loginPwd').value;
+  const alertEl = document.getElementById('loginAlert');
   if(!email||!pwd){showAuthAlert(alertEl,'Please fill in all fields.','error');return}
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){showAuthAlert(alertEl,'Please enter a valid email address.','error');return}
-  // check user
-  const user=users.find(u=>u.email.toLowerCase()===email.toLowerCase()&&u.password===pwd);
-  if(!user){showAuthAlert(alertEl,'Incorrect email or password. Please try again.','error');return}
-  loginUser(user);
+
+  if(!sbReady()){
+    // Offline/demo mode fallback
+    const demoUser = { id:'demo', email, name: email.split('@')[0], role:'customer' };
+    loginUser(demoUser); return;
+  }
+
+  showAuthAlert(alertEl,'🔄 Signing you in…','success');
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pwd });
+  if(error){ showAuthAlert(alertEl,'Incorrect email or password. Please try again.','error'); return; }
+  await loadUserProfile(data.user);
+  showToast(`Welcome back, ${currentUser.name.split(' ')[0]}! 🎉`,'success');
+  setTimeout(()=>navigate('account'),400);
 }
 
-function doRegister(){
-  const fname=document.getElementById('regFname').value.trim();
-  const lname=document.getElementById('regLname').value.trim();
-  const email=document.getElementById('regEmail').value.trim();
-  const pwd=document.getElementById('regPwd').value;
-  const pwd2=document.getElementById('regPwd2').value;
-  const agree=document.getElementById('agreeTerms').checked;
-  const alertEl=document.getElementById('regAlert');
+async function doRegister(){
+  const fname   = document.getElementById('regFname').value.trim();
+  const lname   = document.getElementById('regLname').value.trim();
+  const email   = document.getElementById('regEmail').value.trim();
+  const pwd     = document.getElementById('regPwd').value;
+  const pwd2    = document.getElementById('regPwd2').value;
+  const agree   = document.getElementById('agreeTerms').checked;
+  const alertEl = document.getElementById('regAlert');
   if(!fname||!lname||!email||!pwd||!pwd2){showAuthAlert(alertEl,'Please fill in all required fields.','error');return}
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){showAuthAlert(alertEl,'Please enter a valid email address.','error');return}
   if(pwd.length<6){showAuthAlert(alertEl,'Password must be at least 6 characters long.','error');return}
-  if(pwd!==pwd2){showAuthAlert(alertEl,'Passwords do not match. Please check and try again.','error');return}
+  if(pwd!==pwd2){showAuthAlert(alertEl,'Passwords do not match.','error');return}
   if(!agree){showAuthAlert(alertEl,'Please agree to the Terms of Service to continue.','error');return}
-  if(users.find(u=>u.email.toLowerCase()===email.toLowerCase())){showAuthAlert(alertEl,'An account with this email already exists. Please sign in.','error');return}
-  const newUser={name:`${fname} ${lname}`,email,password:pwd};
-  users.push(newUser);
-  showAuthAlert(alertEl,'Account created successfully! Signing you in…','success');
-  setTimeout(()=>loginUser(newUser),1200);
+
+  if(!sbReady()){
+    const demoUser = { id:'demo', email, name:`${fname} ${lname}`, role:'customer' };
+    showAuthAlert(alertEl,'Account created! Signing you in…','success');
+    setTimeout(()=>loginUser(demoUser),1200); return;
+  }
+
+  showAuthAlert(alertEl,'🔄 Creating your account…','success');
+  const { data, error } = await sb.auth.signUp({
+    email, password: pwd,
+    options: { data: { full_name: `${fname} ${lname}` } }
+  });
+  if(error){ showAuthAlert(alertEl, error.message,'error'); return; }
+
+  // Insert profile row
+  await sb.from('profiles').insert([{
+    id:        data.user.id,
+    full_name: `${fname} ${lname}`,
+    email,
+    role:      'customer',
+  }]);
+
+  showAuthAlert(alertEl,'✅ Account created! Signing you in…','success');
+  await loadUserProfile(data.user);
+  setTimeout(()=>navigate('account'),1000);
 }
 
 function showAuthAlert(el,msg,type){
@@ -1616,14 +1798,17 @@ function showAuthAlert(el,msg,type){
 }
 
 function loginUser(user){
-  currentUser=user;
+  currentUser = user;
   updateNavAuth();
   showToast(`Welcome back, ${user.name.split(' ')[0]}! 🎉`,'success');
   setTimeout(()=>navigate('account'),400);
 }
 
-function logout(){
-  currentUser=null;
+async function logout(){
+  if(sbReady()) await sb.auth.signOut();
+  currentUser  = null;
+  currentAdmin = null;
+  orders = [];
   updateNavAuth();
   showToast('Signed out successfully','info');
   navigate('home');
@@ -1770,11 +1955,70 @@ function renderAdmin(){
       const notice = document.createElement('div');
       notice.id = noticeId;
       notice.className = 'setup-notice';
-      notice.innerHTML = `<strong>⚙️ Developer Setup Required</strong>
-        Before going live, replace the placeholder keys in the JavaScript section:<br>
-        <b>1. Paystack:</b> Set <code>PAYSTACK_PUBLIC_KEY</code> — get it from <a href="https://dashboard.paystack.com" target="_blank" style="color:var(--amber)">dashboard.paystack.com</a> → Settings → API Keys<br>
-        <b>2. Email Alerts:</b> Set <code>EMAILJS_SERVICE_ID</code>, <code>EMAILJS_TEMPLATE_ID</code>, <code>EMAILJS_PUBLIC_KEY</code> — sign up free at <a href="https://www.emailjs.com" target="_blank" style="color:var(--amber)">emailjs.com</a><br>
-        <b>3. Admin Accounts:</b> Update the <code>ADMIN_ACCOUNTS</code> list with your real admin emails and strong passwords.`;
+      notice.innerHTML = `<strong>⚙️ Supabase Setup Required — Follow These Steps</strong>
+        <b>Step 1 — Create Supabase project:</b> Go to <a href="https://supabase.com" target="_blank" style="color:var(--amber)">supabase.com</a> → New Project (free) → copy your Project URL and anon key into the JS config at the top of this file.<br><br>
+        <b>Step 2 — Run this SQL in Supabase → SQL Editor:</b>
+        <pre style="background:#1a1a1a;color:#aaffaa;padding:12px;border-radius:8px;font-size:11px;overflow-x:auto;margin:8px 0;white-space:pre-wrap">-- PROFILES table (links to Supabase auth)
+create table profiles (
+  id uuid references auth.users on delete cascade primary key,
+  full_name text,
+  email text,
+  role text default 'customer', -- 'customer' or 'admin'
+  created_at timestamptz default now()
+);
+alter table profiles enable row level security;
+create policy "Users can read own profile" on profiles for select using (auth.uid() = id);
+create policy "Users can update own profile" on profiles for update using (auth.uid() = id);
+create policy "Service can insert profile" on profiles for insert with check (true);
+
+-- ORDERS table
+create table orders (
+  id text primary key,
+  user_id uuid references auth.users,
+  customer_name text,
+  customer_email text,
+  items text,
+  items_detail text,
+  total numeric,
+  status text default 'Processing',
+  pay_method text,
+  pay_ref text,
+  created_at timestamptz default now()
+);
+alter table orders enable row level security;
+create policy "Users see own orders" on orders for select using (auth.uid() = user_id);
+create policy "Admins see all orders" on orders for select using (
+  exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+);
+create policy "Users insert own orders" on orders for insert with check (auth.uid() = user_id);
+create policy "Admins update orders" on orders for update using (
+  exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+);
+
+-- PRODUCTS table (optional — for admin edits to persist)
+create table products (
+  id bigint primary key default extract(epoch from now())::bigint,
+  name text not null,
+  category text,
+  price numeric,
+  old_price numeric,
+  stock int default 50,
+  emoji text,
+  description text,
+  image text,
+  bestseller boolean default false,
+  rating numeric default 4.5,
+  reviews int default 0,
+  created_at timestamptz default now()
+);
+alter table products enable row level security;
+create policy "Anyone can read products" on products for select using (true);
+create policy "Admins manage products" on products for all using (
+  exists (select 1 from profiles where id = auth.uid() and role = 'admin')
+);</pre>
+        <b>Step 3 — Make yourself admin:</b> Sign up normally on the site, then in Supabase → Table Editor → profiles → find your row → change role from 'customer' to 'admin'.<br><br>
+        <b>Step 4 — Add Paystack key:</b> Set <code>PAYSTACK_PUBLIC_KEY</code> from <a href="https://dashboard.paystack.com" target="_blank" style="color:var(--amber)">dashboard.paystack.com</a><br>
+        <b>Step 5 — Add EmailJS keys</b> for order alert emails (optional): <a href="https://www.emailjs.com" target="_blank" style="color:var(--amber)">emailjs.com</a>`;
       statsEl.parentNode.insertBefore(notice, statsEl);
     }
   }
@@ -1907,7 +2151,7 @@ function adminSearch(val){
   renderAdminProdTable(f);
 }
 function adminCatFilter(val){adminCatF=val;const inp=document.getElementById('adminSearchInput');adminSearch(inp?inp.value:'')}
-function updateOrderStatus(id,status){const o=orders.find(x=>x.id===id);if(o){o.status=status;showToast(`Order ${id} updated to "${status}"!`,'success')}}
+function updateOrderStatus(id,status){ updateOrderStatusDB(id,status); }
 
 // ── Open add/edit product modal ──
 function openAddProduct(){
@@ -1951,7 +2195,7 @@ function openEditProduct(id){
   }
   openModal('productModal');
 }
-function saveProduct(){
+async function saveProduct(){
   const name=document.getElementById('mProdName').value.trim();
   const cat=document.getElementById('mProdCat').value;
   const price=parseInt(document.getElementById('mProdPrice').value);
@@ -1966,16 +2210,16 @@ function saveProduct(){
   if(!price||price<=0){showToast('Please enter a valid price','error');return}
   const finalImg=currentImgData||(imgUrl||null);
   if(editId){
-    // UPDATE EXISTING
     const idx=PRODUCTS.findIndex(p=>p.id===parseInt(editId));
     if(idx!==-1){
       PRODUCTS[idx]={...PRODUCTS[idx],name,category:cat,price,oldPrice:oldP,stock,emoji,desc,image:finalImg,bestseller};
+      await saveProductToDB(PRODUCTS[idx], true);
       showToast(`✅ "${name}" updated successfully!`,'success');
     }
   } else {
-    // ADD NEW
     const newP={id:Date.now(),name,category:cat,price,oldPrice:oldP,emoji,desc,rating:4.5,reviews:0,stock,bestseller,image:finalImg};
     PRODUCTS.unshift(newP);
+    await saveProductToDB(newP, false);
     showToast(`✅ "${name}" added successfully!`,'success');
   }
   closeModal('productModal');
@@ -1990,9 +2234,10 @@ function openDeleteProduct(id){
   document.getElementById('deleteProductName').textContent=p.name;
   openModal('deleteModal');
 }
-function confirmDelete(){
+async function confirmDelete(){
   if(!deleteTargetId)return;
   const p=PRODUCTS.find(x=>x.id===deleteTargetId);
+  await deleteProductFromDB(deleteTargetId);
   PRODUCTS=PRODUCTS.filter(x=>x.id!==deleteTargetId);
   closeModal('deleteModal');
   renderAdminTab('products');
@@ -2110,6 +2355,7 @@ window.addEventListener('scroll',()=>{document.getElementById('navbar').classLis
 renderHome();
 updateCartBadge();
 updateNavAuth();
+initSupabase(); // ← connects to Supabase, restores session
 </script>
 </body>
 </html>
