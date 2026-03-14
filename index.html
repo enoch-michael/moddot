@@ -2295,35 +2295,79 @@ function openEditProduct(id){
   openModal('productModal');
 }
 async function saveProduct(){
-  const name=document.getElementById('mProdName').value.trim();
-  const cat=document.getElementById('mProdCat').value;
-  const price=parseInt(document.getElementById('mProdPrice').value);
-  const oldP=document.getElementById('mProdOldPrice').value?parseInt(document.getElementById('mProdOldPrice').value):null;
-  const stock=parseInt(document.getElementById('mProdStock').value)||50;
-  const emoji=document.getElementById('mProdEmoji').value||'🌿';
-  const desc=document.getElementById('mProdDesc').value.trim();
-  const imgUrl=document.getElementById('mProdImgUrl').value.trim();
-  const bestseller=document.getElementById('mProdBestseller').value==='true';
-  const editId=document.getElementById('editProductId').value;
-  if(!name){showToast('Product name is required','error');return}
-  if(!price||price<=0){showToast('Please enter a valid price','error');return}
-  const finalImg=currentImgData||(imgUrl||null);
-  if(editId){
-    const idx=PRODUCTS.findIndex(p=>p.id===parseInt(editId));
-    if(idx!==-1){
-      PRODUCTS[idx]={...PRODUCTS[idx],name,category:cat,price,oldPrice:oldP,stock,emoji,desc,image:finalImg,bestseller};
-      await saveProductToDB(PRODUCTS[idx], true);
-      showToast(`✅ "${name}" updated successfully!`,'success');
-    }
-  } else {
-    const newP={id:Date.now(),name,category:cat,price,oldPrice:oldP,emoji,desc,rating:4.5,reviews:0,stock,bestseller,image:finalImg};
-    PRODUCTS.unshift(newP);
-    await saveProductToDB(newP, false);
-    showToast(`✅ "${name}" added successfully!`,'success');
+  // ── Read all field values ──
+  const name      = (document.getElementById('mProdName').value || '').trim();
+  const cat       = document.getElementById('mProdCat').value || 'Grains';
+  const priceRaw  = document.getElementById('mProdPrice').value;
+  const oldPRaw   = document.getElementById('mProdOldPrice').value;
+  const stockRaw  = document.getElementById('mProdStock').value;
+  const emoji     = (document.getElementById('mProdEmoji').value || '🌿').trim();
+  const desc      = (document.getElementById('mProdDesc').value || '').trim();
+  const imgUrl    = (document.getElementById('mProdImgUrl').value || '').trim();
+  const bestseller= document.getElementById('mProdBestseller').value === 'true';
+  const editId    = (document.getElementById('editProductId').value || '').trim();
+
+  // ── Parse numbers safely (fixes mobile keyboard returning strings) ──
+  const price  = parseFloat(priceRaw);
+  const oldP   = oldPRaw ? parseFloat(oldPRaw) : null;
+  const stock  = stockRaw ? parseInt(stockRaw) : 50;
+
+  // ── Validation ──
+  if(!name){
+    showToast('Product name is required','error'); return;
   }
-  closeModal('productModal');
-  renderAdminTab('products');
-  currentImgData=null;
+  if(isNaN(price) || price <= 0){
+    showToast('Please enter a valid price','error'); return;
+  }
+
+  // ── Decide final image: use uploaded/pasted image, else keep existing ──
+  const finalImg = currentImgData || imgUrl || null;
+
+  // ── Show saving state on button ──
+  const saveBtn = document.querySelector('#productModal .modal-foot .btn-primary');
+  if(saveBtn){ saveBtn.textContent = 'Saving…'; saveBtn.disabled = true; }
+
+  try {
+    if(editId){
+      // ── EDIT existing product ──
+      const numId = Number(editId);
+      const idx = PRODUCTS.findIndex(p => p.id === numId || String(p.id) === editId);
+      if(idx === -1){
+        showToast('Product not found','error'); return;
+      }
+      PRODUCTS[idx] = {
+        ...PRODUCTS[idx],
+        name, category: cat, price,
+        oldPrice: oldP, stock, emoji,
+        desc, image: finalImg, bestseller
+      };
+      await saveProductToDB(PRODUCTS[idx], true);
+      showToast(`✅ "${name}" updated!`, 'success');
+
+    } else {
+      // ── ADD new product ──
+      const newP = {
+        id: Date.now(),
+        name, category: cat, price,
+        oldPrice: oldP, emoji, desc,
+        rating: 4.5, reviews: 0,
+        stock, bestseller, image: finalImg
+      };
+      PRODUCTS.unshift(newP);
+      await saveProductToDB(newP, false);
+      showToast(`✅ "${name}" added!`, 'success');
+    }
+
+    currentImgData = null;
+    closeModal('productModal');
+    renderAdminTab('products');
+
+  } catch(err){
+    console.error('[MODDOT] saveProduct error:', err);
+    showToast('Something went wrong. Please try again.', 'error');
+  } finally {
+    if(saveBtn){ saveBtn.textContent = 'Save Product'; saveBtn.disabled = false; }
+  }
 }
 
 // Delete modal
