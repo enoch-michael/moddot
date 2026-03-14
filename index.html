@@ -468,6 +468,7 @@ footer ul li:hover{color:#fff}
 /* ── SETUP NOTICE ── */
 .setup-notice{background:var(--amber-pale);border:1.5px dashed var(--amber);border-radius:var(--radius-sm);padding:14px 16px;font-size:13px;color:#7d4700;line-height:1.6;margin-bottom:20px}
 .setup-notice strong{display:block;font-size:14px;margin-bottom:6px;color:var(--amber)}
+
 @media(max-width:960px){
   .nav-links{display:none}
   .hamburger{display:flex}
@@ -480,14 +481,63 @@ footer ul li:hover{color:#fff}
   .footer-grid{grid-template-columns:1fr 1fr}
   .form-grid{grid-template-columns:1fr}
 }
+
 @media(max-width:600px){
+  /* ── Navbar mobile fixes ── */
+  .nav-inner{padding:0 12px;gap:8px;height:60px}
   .nav-search{display:none}
-  .footer-grid{grid-template-columns:1fr}
-  .products-grid{grid-template-columns:repeat(2,1fr)}
+  .logo{font-size:20px}
+
+  /* Account button — shrink so it doesn't overflow */
+  .nav-actions{gap:4px;flex-shrink:0}
+  #navUserBtn{font-size:11px;padding:6px 8px;max-width:130px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  #navAuthBtn{font-size:12px;padding:7px 12px}
+  .cart-badge{width:16px;height:16px;font-size:9px}
+
+  /* ── Product cards mobile fixes ── */
+  .products-grid{grid-template-columns:repeat(2,1fr);gap:10px}
+  .prod-img-wrap{height:150px}
+  .prod-body{padding:10px 10px}
+  .prod-name{font-size:13px}
+  .prod-price{font-size:16px}
+  .prod-footer{flex-direction:column;align-items:flex-start;gap:6px}
+  .prod-footer .btn{width:100%;justify-content:center;padding:8px 10px;font-size:12px}
+  .prod-desc{display:none} /* hide on very small screens to save space */
+
+  /* ── Categories ── */
   .categories-grid{grid-template-columns:repeat(3,1fr)}
-  .hero{padding:44px 18px}
-  .section{padding:40px 18px}
+  .cat-card{padding:14px 8px}
+  .cat-icon{font-size:26px}
+  .cat-name{font-size:11px}
+
+  /* ── Hero ── */
+  .hero{padding:36px 16px}
+  .hero h1{font-size:28px}
+  .hero p{font-size:14px}
+  .btn-lg{padding:13px 22px;font-size:14px}
+
+  /* ── Section padding ── */
+  .section{padding:32px 14px}
+
+  /* ── Cart item ── */
   .cart-item{flex-wrap:wrap}
+  .ci-right{width:100%;justify-content:space-between;margin-top:8px}
+
+  /* ── Footer ── */
+  .footer-grid{grid-template-columns:1fr}
+
+  /* ── Page padding ── */
+  .pd-wrap,.cart-wrap-page,.checkout-wrap,.acct-wrap,.admin-wrap{padding:20px 14px}
+
+  /* ── Auth card ── */
+  .auth-card{padding:24px 18px}
+
+  /* ── Toast ── */
+  .toast-stack{left:12px;right:12px;bottom:14px;max-width:100%}
+
+  /* ── Mobile nav height fix ── */
+  .page{padding-top:60px}
+  .mobile-nav{top:60px}
 }
 </style>
 </head>
@@ -520,7 +570,8 @@ footer ul li:hover{color:#fff}
       <!-- USER MENU: shown when logged in -->
       <div class="user-menu-wrap hidden" id="navUserWrap">
         <button class="btn btn-outline btn-sm" id="navUserBtn" onclick="toggleUserMenu()">
-          <span id="navUserInitial">A</span> Your Account ▾
+          <span id="navUserInitial" style="width:22px;height:22px;background:var(--green);color:#fff;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0">A</span>
+          <span id="navUserName" style="max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Account</span> ▾
         </button>
         <div class="user-menu hidden" id="userMenuDrop">
           <div class="user-menu-header">
@@ -1848,24 +1899,28 @@ async function logout(){
 }
 
 function updateNavAuth(){
-  const authBtn=document.getElementById('navAuthBtn');
-  const userWrap=document.getElementById('navUserWrap');
-  const userInitial=document.getElementById('navUserInitial');
-  const umName=document.getElementById('umName');
-  const umEmail=document.getElementById('umEmail');
+  const authBtn    = document.getElementById('navAuthBtn');
+  const userWrap   = document.getElementById('navUserWrap');
+  const userInitial= document.getElementById('navUserInitial');
+  const userNameEl = document.getElementById('navUserName');
+  const umName     = document.getElementById('umName');
+  const umEmail    = document.getElementById('umEmail');
   if(currentUser){
     authBtn.classList.add('hidden');
     userWrap.classList.remove('hidden');
-    userInitial.textContent=currentUser.name.charAt(0).toUpperCase();
-    if(umName)umName.textContent=currentUser.name;
-    if(umEmail)umEmail.textContent=currentUser.email;
+    const initial = currentUser.name.charAt(0).toUpperCase();
+    const firstName = currentUser.name.split(' ')[0];
+    if(userInitial) userInitial.textContent = initial;
+    if(userNameEl)  userNameEl.textContent  = firstName;
+    if(umName)  umName.textContent  = currentUser.name;
+    if(umEmail) umEmail.textContent = currentUser.email;
     // also update account sidebar
-    const av=document.getElementById('acctAvatar');
-    const an=document.getElementById('acctName');
-    const ae=document.getElementById('acctEmail');
-    if(av)av.textContent=currentUser.name.charAt(0).toUpperCase();
-    if(an)an.textContent=currentUser.name;
-    if(ae)ae.textContent=currentUser.email;
+    const av = document.getElementById('acctAvatar');
+    const an = document.getElementById('acctName');
+    const ae = document.getElementById('acctEmail');
+    if(av) av.textContent = initial;
+    if(an) an.textContent = currentUser.name;
+    if(ae) ae.textContent = currentUser.email;
   } else {
     authBtn.classList.remove('hidden');
     userWrap.classList.add('hidden');
