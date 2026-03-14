@@ -2043,70 +2043,12 @@ function renderAdmin(){
       const notice = document.createElement('div');
       notice.id = noticeId;
       notice.className = 'setup-notice';
-      notice.innerHTML = `<strong>⚙️ Supabase Setup Required — Follow These Steps</strong>
-        <b>Step 1 — Create Supabase project:</b> Go to <a href="https://supabase.com" target="_blank" style="color:var(--amber)">supabase.com</a> → New Project (free) → copy your Project URL and anon key into the JS config at the top of this file.<br><br>
-        <b>Step 2 — Run this SQL in Supabase → SQL Editor:</b>
-        <pre style="background:#1a1a1a;color:#aaffaa;padding:12px;border-radius:8px;font-size:11px;overflow-x:auto;margin:8px 0;white-space:pre-wrap">-- PROFILES table (links to Supabase auth)
-create table profiles (
-  id uuid references auth.users on delete cascade primary key,
-  full_name text,
-  email text,
-  role text default 'customer', -- 'customer' or 'admin'
-  created_at timestamptz default now()
-);
-alter table profiles enable row level security;
-create policy "Users can read own profile" on profiles for select using (auth.uid() = id);
-create policy "Users can update own profile" on profiles for update using (auth.uid() = id);
-create policy "Service can insert profile" on profiles for insert with check (true);
-
--- ORDERS table
-create table orders (
-  id text primary key,
-  user_id uuid references auth.users,
-  customer_name text,
-  customer_email text,
-  items text,
-  items_detail text,
-  total numeric,
-  status text default 'Processing',
-  pay_method text,
-  pay_ref text,
-  created_at timestamptz default now()
-);
-alter table orders enable row level security;
-create policy "Users see own orders" on orders for select using (auth.uid() = user_id);
-create policy "Admins see all orders" on orders for select using (
-  exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-);
-create policy "Users insert own orders" on orders for insert with check (auth.uid() = user_id);
-create policy "Admins update orders" on orders for update using (
-  exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-);
-
--- PRODUCTS table (optional — for admin edits to persist)
-create table products (
-  id bigint primary key default extract(epoch from now())::bigint,
-  name text not null,
-  category text,
-  price numeric,
-  old_price numeric,
-  stock int default 50,
-  emoji text,
-  description text,
-  image text,
-  bestseller boolean default false,
-  rating numeric default 4.5,
-  reviews int default 0,
-  created_at timestamptz default now()
-);
-alter table products enable row level security;
-create policy "Anyone can read products" on products for select using (true);
-create policy "Admins manage products" on products for all using (
-  exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-);</pre>
-        <b>Step 3 — Make yourself admin:</b> Sign up normally on the site, then in Supabase → Table Editor → profiles → find your row → change role from 'customer' to 'admin'.<br><br>
-        <b>Step 4 — Add Paystack key:</b> Set <code>PAYSTACK_PUBLIC_KEY</code> from <a href="https://dashboard.paystack.com" target="_blank" style="color:var(--amber)">dashboard.paystack.com</a><br>
-        <b>Step 5 — Add EmailJS keys</b> for order alert emails (optional): <a href="https://www.emailjs.com" target="_blank" style="color:var(--amber)">emailjs.com</a>`;
+      notice.innerHTML = `<strong>⚙️ Setup Remaining</strong>
+        Your Supabase database is connected ✅<br><br>
+        <b>Still needed:</b><br>
+        • <b>Paystack key:</b> Set <code>PAYSTACK_PUBLIC_KEY</code> in the JS — get it from <a href="https://dashboard.paystack.com" target="_blank" style="color:var(--amber)">dashboard.paystack.com</a> → Settings → API Keys<br>
+        • <b>EmailJS:</b> Your keys are already set ✅<br>
+        • <b>Admin role:</b> In Supabase → Table Editor → profiles → set your row's role to <code>admin</code>`;
       statsEl.parentNode.insertBefore(notice, statsEl);
     }
   }
