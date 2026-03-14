@@ -1222,25 +1222,36 @@ async function updateOrderStatusDB(orderId, status){
 
 // ── Save/update product (admin only) ──
 async function saveProductToDB(product, isEdit){
-  if(!sbReady()) return true; // fall through to local-only mode
+  if(!sbReady()) return true;
   if(isEdit){
     const { error } = await sb.from('products').update({
-      name: product.name, category: product.category,
-      price: product.price, old_price: product.oldPrice,
-      stock: product.stock, emoji: product.emoji,
-      description: product.desc, image: product.image,
-      bestseller: product.bestseller,
+      name:        product.name,
+      category:    product.category,
+      price:       product.price,
+      old_price:   product.oldPrice || null,
+      stock:       product.stock,
+      emoji:       product.emoji,
+      description: product.desc,
+      image:       product.image || null,
+      bestseller:  product.bestseller,
     }).eq('id', product.id);
-    if(error){ showToast('DB save failed: '+error.message,'error'); return false; }
+    if(error){ console.error('[MODDOT] Update failed:', error.message); showToast('Save failed: '+error.message,'error'); return false; }
   } else {
     const { error } = await sb.from('products').insert([{
-      name: product.name, category: product.category,
-      price: product.price, old_price: product.oldPrice,
-      stock: product.stock, emoji: product.emoji,
-      description: product.desc, image: product.image,
-      bestseller: product.bestseller, rating: 4.5, reviews: 0,
+      id:          product.id,   // ← always pass id so it matches in-memory
+      name:        product.name,
+      category:    product.category,
+      price:       product.price,
+      old_price:   product.oldPrice || null,
+      stock:       product.stock,
+      emoji:       product.emoji,
+      description: product.desc,
+      image:       product.image || null,
+      bestseller:  product.bestseller,
+      rating:      product.rating || 4.5,
+      reviews:     product.reviews || 0,
     }]);
-    if(error){ showToast('DB save failed: '+error.message,'error'); return false; }
+    if(error){ console.error('[MODDOT] Insert failed:', error.message); showToast('Save failed: '+error.message,'error'); return false; }
   }
   return true;
 }
@@ -1253,25 +1264,65 @@ async function deleteProductFromDB(id){
 }
 
 // ── Load products from Supabase on startup ──
+// If DB is empty, seeds all 30 hardcoded products into Supabase first
 async function loadProductsFromDB(){
   if(!sbReady()) return;
-  const { data, error } = await sb.from('products').select('*').order('created_at', { ascending: false });
-  if(error || !data || data.length === 0) return; // fall back to hardcoded products
-  // Map DB columns to app format
+
+  const { data, error } = await sb
+    .from('products')
+    .select('*')
+    .order('created_at', { ascending: true });
+
+  if(error){
+    console.error('[MODDOT] Could not load products:', error.message);
+    return; // keep hardcoded list
+  }
+
+  if(!data || data.length === 0){
+    // ── First time: seed all hardcoded products into Supabase ──
+    console.log('[MODDOT] Seeding products into Supabase…');
+    const toInsert = PRODUCTS.map(p => ({
+      id:          p.id,
+      name:        p.name,
+      category:    p.category,
+      price:       p.price,
+      old_price:   p.oldPrice || null,
+      stock:       p.stock,
+      emoji:       p.emoji,
+      description: p.desc,
+      image:       p.image || null,
+      bestseller:  p.bestseller,
+      rating:      p.rating,
+      reviews:     p.reviews,
+    }));
+
+    const { error: seedErr } = await sb.from('products').insert(toInsert);
+    if(seedErr){
+      console.error('[MODDOT] Seed failed:', seedErr.message);
+      // Keep using hardcoded list — don't wipe it
+    } else {
+      console.log('[MODDOT] Products seeded successfully ✅');
+      // Products are now in DB, PRODUCTS array is already correct so no need to remap
+    }
+    return;
+  }
+
+  // ── DB has products — use them (includes all admin edits/adds) ──
   PRODUCTS = data.map(p => ({
     id:         p.id,
     name:       p.name,
     category:   p.category,
-    price:      p.price,
-    oldPrice:   p.old_price || null,
+    price:      Number(p.price),
+    oldPrice:   p.old_price ? Number(p.old_price) : null,
     emoji:      p.emoji || '🌿',
     desc:       p.description || '',
-    rating:     p.rating || 4.5,
-    reviews:    p.reviews || 0,
-    stock:      p.stock || 50,
+    rating:     Number(p.rating) || 4.5,
+    reviews:    Number(p.reviews) || 0,
+    stock:      Number(p.stock) || 50,
     bestseller: p.bestseller || false,
     image:      p.image || null,
   }));
+  console.log('[MODDOT] Loaded', PRODUCTS.length, 'products from Supabase ✅');
 }
 
 // ══════════════════════════════════════════════════════
