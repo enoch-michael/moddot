@@ -1252,40 +1252,82 @@ async function deleteProductFromDB(id){
   if(error) console.error('[MODDOT] Delete failed:', error.message);
 }
 
-// ══════════════════════════════════════════════════════
-//  NAVIGATION
-// ══════════════════════════════════════════════════════
-function navigate(page) {
-  // Guard admin – must be logged in as admin
-  if(page==='admin' && !currentAdmin){ navigate('adminlogin'); return; }
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-link').forEach(l=>l.classList.remove('active'));
-  const el = document.getElementById('page-'+page);
-  if(el){el.classList.add('active');window.scrollTo({top:0,behavior:'smooth'})}
-  const navMap={home:0,products:1};
-  const links=document.querySelectorAll('.nav-links .nav-link');
-  if(navMap[page]!==undefined&&links[navMap[page]])links[navMap[page]].classList.add('active');
-  if(page==='home')renderHome();
-  if(page==='products')renderProducts();
-  if(page==='cart')renderCart();
-  if(page==='checkout')renderCheckout();
-  if(page==='account')renderAccount();
-  if(page==='admin')renderAdmin();
-  if(page==='auth')renderAuth('login');
-  updateCartBadge();
-  document.getElementById('mobileNav').classList.remove('open');
+// ── Load products from Supabase on startup ──
+async function loadProductsFromDB(){
+  if(!sbReady()) return;
+  const { data, error } = await sb.from('products').select('*').order('created_at', { ascending: false });
+  if(error || !data || data.length === 0) return; // fall back to hardcoded products
+  // Map DB columns to app format
+  PRODUCTS = data.map(p => ({
+    id:         p.id,
+    name:       p.name,
+    category:   p.category,
+    price:      p.price,
+    oldPrice:   p.old_price || null,
+    emoji:      p.emoji || '🌿',
+    desc:       p.description || '',
+    rating:     p.rating || 4.5,
+    reviews:    p.reviews || 0,
+    stock:      p.stock || 50,
+    bestseller: p.bestseller || false,
+    image:      p.image || null,
+  }));
 }
 
+// ══════════════════════════════════════════════════════
+//  NAVIGATION  — with browser history & back button support
+// ══════════════════════════════════════════════════════
+let _navLock = false; // prevent double-navigate from popstate
+
+function navigate(page, addToHistory = true) {
+  // Guard admin – must be logged in as admin
+  if(page === 'admin' && !currentAdmin){ navigate('adminlogin'); return; }
+
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+
+  const el = document.getElementById('page-' + page);
+  if(el){ el.classList.add('active'); window.scrollTo({top:0, behavior:'smooth'}); }
+
+  const navMap = {home:0, products:1};
+  const links = document.querySelectorAll('.nav-links .nav-link');
+  if(navMap[page] !== undefined && links[navMap[page]]) links[navMap[page]].classList.add('active');
+
+  if(page === 'home')     renderHome();
+  if(page === 'products') renderProducts();
+  if(page === 'cart')     renderCart();
+  if(page === 'checkout') renderCheckout();
+  if(page === 'account')  renderAccount();
+  if(page === 'admin')    renderAdmin();
+  if(page === 'auth')     renderAuth('login');
+
+  updateCartBadge();
+  document.getElementById('mobileNav').classList.remove('open');
+
+  // Push to browser history so back button works
+  if(addToHistory && !_navLock){
+    history.pushState({ page }, '', '#' + page);
+  }
+}
+
+// ── Handle browser back / forward button ──
+window.addEventListener('popstate', (e) => {
+  _navLock = true;
+  const page = e.state?.page || 'home';
+  if(page === 'detail' && e.state?.productId){
+    viewProduct(e.state.productId);
+  } else {
+    navigate(page, false);
+  }
+  _navLock = false;
+});
+
 // Redirect to auth if not logged in, else go to products
-function shopOrAuth(){
-  currentUser ? navigate('products') : navigate('auth');
-}
+function shopOrAuth(){ currentUser ? navigate('products') : navigate('auth'); }
 // Admin nav entry point
-function goAdmin(){
-  currentAdmin ? navigate('admin') : navigate('adminlogin');
-}
-function gotoAccount(){currentUser?navigate('account'):navigate('auth')}
-function filterGo(cat){filterCat=cat;navigate('products')}
+function goAdmin(){ currentAdmin ? navigate('admin') : navigate('adminlogin'); }
+function gotoAccount(){ currentUser ? navigate('account') : navigate('auth'); }
+function filterGo(cat){ filterCat = cat; navigate('products'); }
 
 // ══════════════════════════════════════════════════════
 //  ADMIN AUTH  — role stored securely in Supabase profiles table
@@ -1502,6 +1544,8 @@ function viewProduct(id){
       <div class="products-grid">${related.map(productCard).join('')}</div>
     </div>`;
   navigate('detail');
+  // Push detail page to history with product id so back button works
+  history.pushState({ page: 'detail', productId: p.id }, '', '#detail-' + p.id);
 }
 function changeQty(d){detailQty=Math.max(1,detailQty+d);const e=document.getElementById('pdQty');if(e)e.textContent=detailQty}
 function addToCartQty(id){for(let i=0;i<detailQty;i++)addToCart(id,false);showToast(`${detailQty}× ${PRODUCTS.find(p=>p.id===id).name} added to cart!`,'success');detailQty=1;const e=document.getElementById('pdQty');if(e)e.textContent=1}
@@ -2495,10 +2539,25 @@ function closeMobileNav(){document.getElementById('mobileNav').classList.remove(
 window.addEventListener('scroll',()=>{document.getElementById('navbar').classList.toggle('scrolled',window.scrollY>10)});
 
 // ══ INIT ══
-renderHome();
-updateCartBadge();
-updateNavAuth();
-initSupabase(); // ← connects to Supabase, restores session
+(async function init(){
+  // 1. Load products from Supabase first (so edits/adds persist on reload)
+  await loadProductsFromDB();
+
+  // 2. Restore last visited page from URL hash (fixes reload & back button)
+  const hash = window.location.hash.replace('#', '') || 'home';
+  const safePage = ['home','products','cart','auth','account','success'].includes(hash) ? hash : 'home';
+
+  renderHome();
+  updateCartBadge();
+  updateNavAuth();
+
+  // 3. Set initial history state
+  history.replaceState({ page: safePage }, '', '#' + safePage);
+  if(safePage !== 'home') navigate(safePage, false);
+
+  // 4. Connect to Supabase and restore session
+  await initSupabase();
+})();
 </script>
 </body>
 </html>
