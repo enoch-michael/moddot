@@ -1023,18 +1023,32 @@ async function initSupabase(){
 
 // ── Load profile + admin role from Supabase ──
 async function loadUserProfile(authUser){
-  // Fetch profile row from profiles table
-  const { data: profile } = await sb
+  if(!authUser) return;
+
+  // Try to fetch existing profile row
+  let { data: profile, error } = await sb
     .from('profiles')
     .select('*')
     .eq('id', authUser.id)
     .single();
 
+  // If no profile exists yet — create one automatically
+  if(!profile){
+    const fullName = authUser.user_metadata?.full_name || authUser.email.split('@')[0];
+    const { data: newProfile } = await sb.from('profiles').insert([{
+      id:        authUser.id,
+      full_name: fullName,
+      email:     authUser.email,
+      role:      'customer',
+    }]).select().single();
+    profile = newProfile;
+  }
+
   currentUser = {
     id:    authUser.id,
     email: authUser.email,
     name:  profile?.full_name || authUser.email.split('@')[0],
-    role:  profile?.role || 'customer',   // 'customer' | 'admin'
+    role:  profile?.role || 'customer',
   };
 
   // If admin role, unlock admin panel
@@ -1740,14 +1754,26 @@ async function doLogin(){
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){showAuthAlert(alertEl,'Please enter a valid email address.','error');return}
 
   if(!sbReady()){
-    // Offline/demo mode fallback
     const demoUser = { id:'demo', email, name: email.split('@')[0], role:'customer' };
     loginUser(demoUser); return;
   }
 
   showAuthAlert(alertEl,'🔄 Signing you in…','success');
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pwd });
-  if(error){ showAuthAlert(alertEl,'Incorrect email or password. Please try again.','error'); return; }
+
+  if(error){
+    console.error('[MODDOT] Login error:', error.message);
+    // Give a helpful message based on the error type
+    if(error.message.includes('Email not confirmed')){
+      showAuthAlert(alertEl,'⚠️ Please check your email and click the confirmation link first, then try again.','error');
+    } else if(error.message.includes('Invalid login credentials')){
+      showAuthAlert(alertEl,'❌ Incorrect email or password. Please try again.','error');
+    } else {
+      showAuthAlert(alertEl,'❌ ' + error.message,'error');
+    }
+    return;
+  }
+
   await loadUserProfile(data.user);
   showToast(`Welcome back, ${currentUser.name.split(' ')[0]}! 🎉`,'success');
   setTimeout(()=>navigate('account'),400);
@@ -1778,9 +1804,13 @@ async function doRegister(){
     email, password: pwd,
     options: { data: { full_name: `${fname} ${lname}` } }
   });
-  if(error){ showAuthAlert(alertEl, error.message,'error'); return; }
 
-  // Insert profile row
+  if(error){
+    console.error('[MODDOT] Register error:', error.message);
+    showAuthAlert(alertEl,'❌ ' + error.message,'error'); return;
+  }
+
+  // Create profile row immediately
   await sb.from('profiles').insert([{
     id:        data.user.id,
     full_name: `${fname} ${lname}`,
@@ -1788,9 +1818,12 @@ async function doRegister(){
     role:      'customer',
   }]);
 
-  showAuthAlert(alertEl,'✅ Account created! Signing you in…','success');
-  await loadUserProfile(data.user);
-  setTimeout(()=>navigate('account'),1000);
+  // No email confirmation needed — log in directly
+  if(data.user){
+    showAuthAlert(alertEl,'✅ Account created! Signing you in…','success');
+    await loadUserProfile(data.user);
+    setTimeout(()=>navigate('account'),1000);
+  }
 }
 
 function showAuthAlert(el,msg,type){
